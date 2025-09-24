@@ -1000,7 +1000,7 @@ def run_experiment():
     
     # 算法参数配置
     config = {
-        'population_size': 50,      # 种群大小
+        'population_size': 5,      # 种群大小
         'crossover_rate': 0.8,      # 交叉概率
         'mutation_rate': 0.1,       # 变异概率
         'max_generations': 100      # 最大迭代次数
