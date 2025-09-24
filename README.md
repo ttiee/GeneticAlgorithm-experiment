@@ -108,11 +108,19 @@ python experiment2.py
 ## 结果说明
 
 ### 实验一结果
+
+![evolution_process.png](./results-1/evolution_process.png)
+![objective_function.png](./results-1/objective_function.png)
+![detailed_analysis.png](./results-1/detailed_analysis.png)
 - `evolution_process.png`：算法收敛过程
 - `objective_function.png`：目标函数与最优解
 - `detailed_analysis.png`：详细性能分析
 
 ### 实验二结果
+
+![evolution_process.png](./results-2/evolution_process.png)
+![gantt_chart.png](./results-2/gantt_chart.png)
+![detailed_analysis.png](./results-2/detailed_analysis.png)
 - `evolution_process.png`：适应度进化曲线
 - `gantt_chart.png`：最优调度甘特图
 - `detailed_analysis.png`：算法性能统计
