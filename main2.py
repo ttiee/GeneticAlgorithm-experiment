@@ -32,6 +32,14 @@ def run_experiment():
     print("| j2   | 1         | 5         | 7         | m1        | m3        | m2        |")
     print("| j3   | 3         | 2         | 3         | m2        | m1        | m3        |")
     print()
+    print("重要约束:")
+    print("✓ 每个工件的工序必须按照预定的顺序执行")
+    print("  - 工件1: 工序1 → 工序2 → 工序3")
+    print("  - 工件2: 工序1 → 工序2 → 工序3") 
+    print("  - 工件3: 工序1 → 工序2 → 工序3")
+    print("✓ 每台机器同时只能加工一个工序")
+    print("✓ 目标：最小化最大完工时间(makespan)")
+    print()
     
     # 算法参数配置
     config = {

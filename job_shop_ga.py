@@ -23,12 +23,114 @@ class JobShopPopulation:
         """
         self.size = size
         self.num_operations = num_operations
-        self.individuals = [JobShopIndividual(num_operations=num_operations) for _ in range(size)]
+        self.individuals = self._create_constraint_satisfying_population(size, num_operations)
         self.generation = 0
         self.best_individual = None
         self.fitness_history = []
         self.best_fitness_history = []
         self.average_fitness_history = []
+    
+    def _create_constraint_satisfying_population(self, size: int, num_operations: int) -> List[JobShopIndividual]:
+        """
+        创建满足工序顺序约束的初始种群
+        
+        Args:
+            size: 种群大小
+            num_operations: 工序总数
+            
+        Returns:
+            满足约束的个体列表
+        """
+        individuals = []
+        
+        for _ in range(size):
+            # 为每个工件创建工序序列
+            job1_ops = [0, 1, 2]  # 工件1的工序：0,1,2
+            job2_ops = [3, 4, 5]  # 工件2的工序：3,4,5  
+            job3_ops = [6, 7, 8]  # 工件3的工序：6,7,8
+            
+            # 随机打乱每个工件的工序顺序，但保持工件内工序顺序
+            random.shuffle(job1_ops)
+            random.shuffle(job2_ops)
+            random.shuffle(job3_ops)
+            
+            # 将所有工序合并成一个调度序列
+            all_operations = job1_ops + job2_ops + job3_ops
+            random.shuffle(all_operations)
+            
+            # 创建满足约束的调度序列
+            schedule = self._create_valid_schedule(all_operations)
+            
+            individuals.append(JobShopIndividual(schedule))
+        
+        return individuals
+    
+    def _create_valid_schedule(self, operations: List[int]) -> List[int]:
+        """
+        创建满足工序顺序约束的调度序列
+        
+        Args:
+            operations: 工序列表
+            
+        Returns:
+            满足约束的调度序列
+        """
+        # 工序到工件的映射
+        operation_to_job = {0: 1, 1: 1, 2: 1, 3: 2, 4: 2, 5: 2, 6: 3, 7: 3, 8: 3}
+        operation_to_seq = {0: 1, 1: 2, 2: 3, 3: 1, 4: 2, 5: 3, 6: 1, 7: 2, 8: 3}
+        
+        # 按工件分组工序
+        job_operations = {1: [], 2: [], 3: []}
+        for op in operations:
+            job_id = operation_to_job[op]
+            job_operations[job_id].append(op)
+        
+        # 对每个工件的工序按顺序排序
+        for job_id in [1, 2, 3]:
+            job_operations[job_id].sort(key=lambda x: operation_to_seq[x])
+        
+        # 创建满足约束的调度序列
+        valid_schedule = []
+        
+        # 随机选择下一个要调度的工序
+        remaining_ops = operations.copy()
+        
+        while remaining_ops:
+            # 找到可以调度的工序（其前序工序已完成）
+            available_ops = []
+            
+            for op in remaining_ops:
+                job_id = operation_to_job[op]
+                seq = operation_to_seq[op]
+                
+                # 检查前序工序是否已完成
+                can_schedule = True
+                for prev_seq in range(1, seq):
+                    prev_op = None
+                    for check_op in operations:
+                        if operation_to_job[check_op] == job_id and operation_to_seq[check_op] == prev_seq:
+                            prev_op = check_op
+                            break
+                    
+                    if prev_op is not None and prev_op not in [x for x in operations if x not in remaining_ops]:
+                        can_schedule = False
+                        break
+                
+                if can_schedule:
+                    available_ops.append(op)
+            
+            # 从可用工序中随机选择一个
+            if available_ops:
+                selected_op = random.choice(available_ops)
+                valid_schedule.append(selected_op)
+                remaining_ops.remove(selected_op)
+            else:
+                # 如果没有可用工序，随机选择一个（这种情况理论上不应该发生）
+                selected_op = random.choice(remaining_ops)
+                valid_schedule.append(selected_op)
+                remaining_ops.remove(selected_op)
+        
+        return valid_schedule
     
     def evaluate_population(self, scheduler: JobShopScheduler):
         """评估整个种群的适应度"""
@@ -107,52 +209,173 @@ class JobShopGeneticAlgorithm:
         return random.choices(population.individuals, weights=probabilities, k=population.size)
     
     def crossover(self, parent1: JobShopIndividual, parent2: JobShopIndividual) -> Tuple[JobShopIndividual, JobShopIndividual]:
-        """交叉操作 - 使用顺序交叉(OX)"""
+        """交叉操作 - 使用保持工序顺序约束的交叉"""
         if random.random() > self.crossover_rate:
             return copy.deepcopy(parent1), copy.deepcopy(parent2)
         
-        # 顺序交叉(Order Crossover)
-        size = len(parent1.chromosome)
-        start, end = sorted(random.sample(range(size), 2))
-        
-        # 创建子代1
-        child1_chromosome = [-1] * size
-        child1_chromosome[start:end] = parent1.chromosome[start:end]
-        
-        # 从parent2中填充剩余位置
-        remaining = [x for x in parent2.chromosome if x not in child1_chromosome[start:end]]
-        remaining_idx = 0
-        
-        for i in range(size):
-            if child1_chromosome[i] == -1:
-                child1_chromosome[i] = remaining[remaining_idx]
-                remaining_idx += 1
-        
-        # 创建子代2
-        child2_chromosome = [-1] * size
-        child2_chromosome[start:end] = parent2.chromosome[start:end]
-        
-        # 从parent1中填充剩余位置
-        remaining = [x for x in parent1.chromosome if x not in child2_chromosome[start:end]]
-        remaining_idx = 0
-        
-        for i in range(size):
-            if child2_chromosome[i] == -1:
-                child2_chromosome[i] = remaining[remaining_idx]
-                remaining_idx += 1
+        # 创建满足约束的子代
+        child1_chromosome = self._create_constraint_satisfying_offspring(parent1.chromosome, parent2.chromosome)
+        child2_chromosome = self._create_constraint_satisfying_offspring(parent2.chromosome, parent1.chromosome)
         
         return JobShopIndividual(child1_chromosome), JobShopIndividual(child2_chromosome)
     
+    def _create_constraint_satisfying_offspring(self, parent1: List[int], parent2: List[int]) -> List[int]:
+        """
+        创建满足工序顺序约束的后代
+        
+        Args:
+            parent1: 父代1的染色体
+            parent2: 父代2的染色体
+            
+        Returns:
+            满足约束的后代染色体
+        """
+        # 工序到工件的映射
+        operation_to_job = {0: 1, 1: 1, 2: 1, 3: 2, 4: 2, 5: 2, 6: 3, 7: 3, 8: 3}
+        operation_to_seq = {0: 1, 1: 2, 2: 3, 3: 1, 4: 2, 5: 3, 6: 1, 7: 2, 8: 3}
+        
+        # 随机选择从哪个父代继承每个工件的工序顺序
+        job_inheritance = {}
+        for job_id in [1, 2, 3]:
+            job_inheritance[job_id] = random.choice([parent1, parent2])
+        
+        # 按工件分组工序
+        job_operations = {1: [], 2: [], 3: []}
+        for op in range(9):
+            job_id = operation_to_job[op]
+            job_operations[job_id].append(op)
+        
+        # 从选定的父代中获取每个工件的工序顺序
+        offspring_operations = []
+        
+        for job_id in [1, 2, 3]:
+            parent = job_inheritance[job_id]
+            
+            # 从父代中提取该工件的工序顺序
+            job_ops_in_parent = []
+            for op in parent:
+                if operation_to_job[op] == job_id:
+                    job_ops_in_parent.append(op)
+            
+            # 按工序顺序排序
+            job_ops_in_parent.sort(key=lambda x: operation_to_seq[x])
+            offspring_operations.extend(job_ops_in_parent)
+        
+        # 创建满足约束的调度序列
+        return self._create_valid_schedule_from_operations(offspring_operations)
+    
+    def _create_valid_schedule_from_operations(self, operations: List[int]) -> List[int]:
+        """
+        从工序列表创建满足约束的调度序列
+        
+        Args:
+            operations: 工序列表
+            
+        Returns:
+            满足约束的调度序列
+        """
+        # 工序到工件的映射
+        operation_to_job = {0: 1, 1: 1, 2: 1, 3: 2, 4: 2, 5: 2, 6: 3, 7: 3, 8: 3}
+        operation_to_seq = {0: 1, 1: 2, 2: 3, 3: 1, 4: 2, 5: 3, 6: 1, 7: 2, 8: 3}
+        
+        # 创建满足约束的调度序列
+        valid_schedule = []
+        remaining_ops = operations.copy()
+        
+        while remaining_ops:
+            # 找到可以调度的工序（其前序工序已完成）
+            available_ops = []
+            
+            for op in remaining_ops:
+                job_id = operation_to_job[op]
+                seq = operation_to_seq[op]
+                
+                # 检查前序工序是否已完成
+                can_schedule = True
+                for prev_seq in range(1, seq):
+                    prev_op = None
+                    for check_op in operations:
+                        if operation_to_job[check_op] == job_id and operation_to_seq[check_op] == prev_seq:
+                            prev_op = check_op
+                            break
+                    
+                    if prev_op is not None and prev_op not in [x for x in operations if x not in remaining_ops]:
+                        can_schedule = False
+                        break
+                
+                if can_schedule:
+                    available_ops.append(op)
+            
+            # 从可用工序中随机选择一个
+            if available_ops:
+                selected_op = random.choice(available_ops)
+                valid_schedule.append(selected_op)
+                remaining_ops.remove(selected_op)
+            else:
+                # 如果没有可用工序，随机选择一个
+                selected_op = random.choice(remaining_ops)
+                valid_schedule.append(selected_op)
+                remaining_ops.remove(selected_op)
+        
+        return valid_schedule
+    
     def mutation(self, individual: JobShopIndividual) -> JobShopIndividual:
-        """变异操作 - 交换变异"""
-        mutated_chromosome = individual.chromosome.copy()
+        """变异操作 - 保持工序顺序约束的变异"""
+        if random.random() > self.mutation_rate:
+            return copy.deepcopy(individual)
         
-        if random.random() < self.mutation_rate:
-            # 随机选择两个位置进行交换
-            pos1, pos2 = random.sample(range(len(mutated_chromosome)), 2)
-            mutated_chromosome[pos1], mutated_chromosome[pos2] = mutated_chromosome[pos2], mutated_chromosome[pos1]
-        
+        # 创建满足约束的变异个体
+        mutated_chromosome = self._create_constraint_satisfying_mutation(individual.chromosome)
         return JobShopIndividual(mutated_chromosome)
+    
+    def _create_constraint_satisfying_mutation(self, chromosome: List[int]) -> List[int]:
+        """
+        创建满足工序顺序约束的变异个体
+        
+        Args:
+            chromosome: 原始染色体
+            
+        Returns:
+            满足约束的变异染色体
+        """
+        # 工序到工件的映射
+        operation_to_job = {0: 1, 1: 1, 2: 1, 3: 2, 4: 2, 5: 2, 6: 3, 7: 3, 8: 3}
+        operation_to_seq = {0: 1, 1: 2, 2: 3, 3: 1, 4: 2, 5: 3, 6: 1, 7: 2, 8: 3}
+        
+        # 按工件分组工序
+        job_operations = {1: [], 2: [], 3: []}
+        for op in chromosome:
+            job_id = operation_to_job[op]
+            job_operations[job_id].append(op)
+        
+        # 对每个工件的工序按顺序排序
+        for job_id in [1, 2, 3]:
+            job_operations[job_id].sort(key=lambda x: operation_to_seq[x])
+        
+        # 随机选择变异类型
+        mutation_type = random.choice(['swap_jobs', 'reorder_within_job', 'random_reschedule'])
+        
+        if mutation_type == 'swap_jobs':
+            # 交换两个工件的调度顺序
+            job1, job2 = random.sample([1, 2, 3], 2)
+            job_operations[job1], job_operations[job2] = job_operations[job2], job_operations[job1]
+        
+        elif mutation_type == 'reorder_within_job':
+            # 在工件内部重新排序（保持工序顺序）
+            job_id = random.choice([1, 2, 3])
+            # 工件内部工序必须按顺序执行，所以这种变异实际上不改变顺序
+            pass
+        
+        elif mutation_type == 'random_reschedule':
+            # 随机重新调度，但保持工序顺序约束
+            all_operations = job_operations[1] + job_operations[2] + job_operations[3]
+            return self._create_valid_schedule_from_operations(all_operations)
+        
+        # 重新组合所有工序
+        all_operations = job_operations[1] + job_operations[2] + job_operations[3]
+        
+        # 创建满足约束的调度序列
+        return self._create_valid_schedule_from_operations(all_operations)
     
     def evolve_generation(self):
         """进化一代"""

@@ -87,6 +87,33 @@ class JobShopScheduler:
         for job in self.jobs:
             self.operations.extend(job.operations)
     
+    def validate_schedule_constraints(self, schedule: List[int]) -> bool:
+        """
+        验证调度方案是否满足工序顺序约束
+        
+        Args:
+            schedule: 调度序列
+            
+        Returns:
+            是否满足约束
+        """
+        # 记录每个工件的工序执行顺序
+        job_operation_order = {1: [], 2: [], 3: []}
+        
+        for operation_id in schedule:
+            operation = self.operations[operation_id]
+            job_id = operation.job_id
+            operation_seq = operation.operation_id
+            job_operation_order[job_id].append(operation_seq)
+        
+        # 检查每个工件的工序是否按顺序执行
+        for job_id in [1, 2, 3]:
+            operations = job_operation_order[job_id]
+            if operations != sorted(operations):
+                return False
+        
+        return True
+    
     def calculate_makespan(self, schedule: List[int]) -> int:
         """
         计算给定调度方案的最大完工时间
@@ -97,6 +124,11 @@ class JobShopScheduler:
         Returns:
             最大完工时间（makespan）
         """
+        # 首先验证工序顺序约束
+        if not self.validate_schedule_constraints(schedule):
+            # 如果违反约束，返回一个很大的惩罚值
+            return 999999
+        
         # 重置所有时间和状态
         for job in self.jobs:
             job.completion_time = 0
